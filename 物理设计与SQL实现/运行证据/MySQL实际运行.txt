@@ -1,0 +1,186 @@
+=== MySQL server ===
++---------------+-----------------------+-----------------------------------------------------------------------------------------------------------------------+
+| mysql_version | db                    | sql_mode                                                                                                              |
++---------------+-----------------------+-----------------------------------------------------------------------------------------------------------------------+
+| 8.0.41        | university_coursework | ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION |
++---------------+-----------------------+-----------------------------------------------------------------------------------------------------------------------+
+
+=== Q01 单表条件查询。按教室名称前缀列出 3 区 3 教一层教室。 ===
++---------+-----------+
+| room_id | room_name |
++---------+-----------+
+| 1621    | 3区3教101 |
+| 1622    | 3区3教102 |
+| 1623    | 3区3教103 |
+| 1624    | 3区3教104 |
+| 1625    | 3区3教105 |
++---------+-----------+
+
+=== Q02 单表条件查询。春季容量不少于 18 人的班，按余量排序。 ===
++-----------------+----------+--------------+-----------+
+| class_no        | capacity | active_count | remaining |
++-----------------+----------+--------------+-----------+
+| 2025-2026-2-002 | 20       | 1            | 19        |
+| 2025-2026-2-004 | 18       | 0            | 18        |
+| 2025-2026-2-005 | 18       | 0            | 18        |
+| 2025-2026-2-006 | 18       | 0            | 18        |
+| 2025-2026-2-007 | 18       | 0            | 18        |
+| 2025-2026-2-008 | 18       | 0            | 18        |
+| 2025-2026-2-009 | 18       | 0            | 18        |
+| 2025-2026-2-010 | 18       | 0            | 18        |
+| 2025-2026-2-011 | 18       | 0            | 18        |
+| 2025-2026-2-003 | 18       | 1            | 17        |
++-----------------+----------+--------------+-----------+
+
+=== Q03 INNER JOIN。按教学班看每条排课时间、教室与课程。 ===
++-----------------+-------------+------------+--------------+------------+-----------+
+| class_no        | course_name | weekday_no | start_period | end_period | room_name |
++-----------------+-------------+------------+--------------+------------+-----------+
+| 2025-2026-2-001 | 数据库原理  | 1          | 1            | 1          | 1区1教101 |
+| 2025-2026-2-001 | 数据库原理  | 1          | 2            | 2          | 1区1教106 |
++-----------------+-------------+------------+--------------+------------+-----------+
+
+=== Q04 LEFT JOIN。学生个人修读史，保留尚未录入和已退出记录。 ===
++---------------+-----------------+-------------+------------------+----------+
+| enrollment_id | class_no        | course_name | enrollment_state | score    |
++---------------+-----------------+-------------+------------------+----------+
+| 15            | 2025-2026-2-002 | 数据库原理  | 有效             | 暂无成绩 |
+| 16            | 2025-2026-2-003 | 操作系统    | 有效             | 暂无成绩 |
++---------------+-----------------+-------------+------------------+----------+
+
+=== Q05 GROUP BY / HAVING。至少有两条选课事件的班。 ===
++-----------------+-------------------+-----------------+-------------+
+| class_no        | enrollment_events | active_students | withdrawals |
++-----------------+-------------------+-----------------+-------------+
+| 2025-2026-2-001 | 13                | 12              | 1           |
+| 2025-2026-2-002 | 2                 | 1               | 1           |
+| 2025-2026-3-001 | 2                 | 1               | 1           |
++-----------------+-------------------+-----------------+-------------+
+
+=== Q06 IN 子查询。按任一合授教师筛班。 ===
++-----------------+---------------+---------+
+| class_no        | academic_year | term_no |
++-----------------+---------------+---------+
+| 2025-2026-2-001 | 2025-2026     | 2       |
+| 2025-2026-3-001 | 2025-2026     | 3       |
++-----------------+---------------+---------+
+
+=== Q07 EXISTS / NOT EXISTS 相关子查询。有有效选课但还没有成绩的学生。 ===
++------------+--------------+
+| student_no | student_name |
++------------+--------------+
+| S014       | 学生14       |
++------------+--------------+
+
+=== Q08 复杂业务查询。按课程和学期聚合，避免合授、排课、改分历史扩大计数。 ===
++-----------+--------------+---------------+---------+--------------+----------------+----------------------+-----------------+------------+----------+--------+----------+
+| course_no | course_name  | academic_year | term_no | enroll_count | withdraw_count | teaching_assignments | active_students | mean_score | mean_gpa | passes | full_gpa |
++-----------+--------------+---------------+---------+--------------+----------------+----------------------+-----------------+------------+----------+--------+----------+
+| C001      | 数据库原理   | 2025-2026     | 2       | 15           | 2              | 3                    | 13              | 72.33      | 2.25     | 10     | 3        |
+| C002      | 操作系统     | 2025-2026     | 2       | 1            | 0              | 1                    | 1               | 暂无成绩   | 暂无成绩 | 0      | 0        |
+| C003      | 编译原理     | 2025-2026     | 2       | 0            | 0              | 1                    | 0               | 暂无成绩   | 暂无成绩 | 0      | 0        |
+| C004      | 计算机网络   | 2025-2026     | 2       | 0            | 0              | 1                    | 0               | 暂无成绩   | 暂无成绩 | 0      | 0        |
+| C005      | 软件设计     | 2025-2026     | 2       | 0            | 0              | 1                    | 0               | 暂无成绩   | 暂无成绩 | 0      | 0        |
+| C006      | 算法设计     | 2025-2026     | 2       | 0            | 0              | 1                    | 0               | 暂无成绩   | 暂无成绩 | 0      | 0        |
+| C007      | 机器学习     | 2025-2026     | 2       | 0            | 0              | 1                    | 0               | 暂无成绩   | 暂无成绩 | 0      | 0        |
+| C008      | 计算智能     | 2025-2026     | 2       | 0            | 0              | 1                    | 0               | 暂无成绩   | 暂无成绩 | 0      | 0        |
+| C009      | 计算机图形学 | 2025-2026     | 2       | 0            | 0              | 1                    | 0               | 暂无成绩   | 暂无成绩 | 0      | 0        |
+| C010      | 信息检索     | 2025-2026     | 2       | 0            | 0              | 1                    | 0               | 暂无成绩   | 暂无成绩 | 0      | 0        |
++-----------+--------------+---------------+---------+--------------+----------------+----------------------+-----------------+------------+----------+--------+----------+
+
+=== 04_audit.sql ===
++----------------------+------------+
+| table_name           | rows_found |
++----------------------+------------+
+| account              | 27         |
+| student              | 14         |
+| teacher              | 12         |
+| course               | 10         |
+| academic_term        | 12         |
+| class_number_counter | 12         |
+| teaching_class       | 13         |
+| weekly_time          | 14         |
+| classroom            | 2430       |
+| class_schedule       | 14         |
+| teaching_assignment  | 14         |
+| enrollment           | 19         |
+| grade                | 14         |
+| grade_revision       | 10         |
++----------------------+------------+
++--------------------------+------------+
+| audit_rule               | violations |
++--------------------------+------------+
+| term_count_per_year      | 0          |
+| summer_start             | 0          |
+| term_date_overlap        | 0          |
+| classroom_inventory      | 0          |
+| account_binding          | 0          |
+| class_arrangements       | 0          |
+| same_course_weekly_hours | 0          |
+| class_or_room_overlap    | 0          |
+| teacher_overlap          | 0          |
+| student_current_overlap  | 0          |
+| active_count_cache       | 0          |
+| effective_course_unique  | 0          |
+| selection_window         | 0          |
+| withdrawal_window        | 0          |
+| midterm_limit            | 0          |
+| grade_eligibility        | 0          |
+| revision_eligibility     | 0          |
+| class_number_counter     | 0          |
++--------------------------+------------+
+
+=== Negative tests ===
+N01 duplicate primary key
+ERROR 1062 (23000) at line 1: Duplicate entry 'C001' for key 'course.PRIMARY'
+
+N02 orphan foreign key
+ERROR 1452 (23000) at line 1: Cannot add or update a child row: a foreign key constraint fails (`university_coursework`.`class_schedule`, CONSTRAINT `class_schedule_ibfk_3` FOREIGN KEY (`room_id`) REFERENCES `classroom` (`room_id`))
+
+N03 duplicate natural time
+ERROR 1062 (23000) at line 1: Duplicate entry '1-1-1' for key 'weekly_time.weekday_no'
+
+N04 grade out of range
+ERROR 3819 (HY000) at line 1: Check constraint 'ck_grade_score' is violated.
+
+N05 missing name
+ERROR 1048 (23000) at line 1: Column 'course_name' cannot be null
+
+N06 invalid classroom
+ERROR 3819 (HY000) at line 1: Check constraint 'ck_room_name' is violated.
+
+N07 backward withdrawal
+ERROR 3819 (HY000) at line 1: Check constraint 'ck_enrollment_chronology' is violated.
+
+N08 over capacity
+ERROR 3819 (HY000) at line 1: Check constraint 'ck_class_capacity' is violated.
+
+N09 referenced room deletion
+ERROR 1451 (23000) at line 1: Cannot delete or update a parent row: a foreign key constraint fails (`university_coursework`.`class_schedule`, CONSTRAINT `class_schedule_ibfk_3` FOREIGN KEY (`room_id`) REFERENCES `classroom` (`room_id`))
+
+N10 invalid weekday
+ERROR 3819 (HY000) at line 1: Check constraint 'ck_time_periods' is violated.
+
+N11 role mismatch
+ERROR 3819 (HY000) at line 1: Check constraint 'ck_account_role' is violated.
+
+N12 duplicate classroom
+ERROR 1062 (23000) at line 1: Duplicate entry '1区1教101' for key 'classroom.room_name'
+
+N13 invalid class prefix
+ERROR 3819 (HY000) at line 1: Check constraint 'ck_class_number' is violated.
+
+=== Post-test audit ===
+All fixture counts and business audit results unchanged.
+
+=== Delete transaction and rollback ===
++---------------+------------------------+-----------------+-----------------+------------------+
+| deleted_class | remaining_class_events | preserved_rooms | preserved_times | preserved_serial |
++---------------+------------------------+-----------------+-----------------+------------------+
+| 0             | 0                      | 2430            | 14              | 11               |
++---------------+------------------------+-----------------+-----------------+------------------+
++----------------+
+| restored_class |
++----------------+
+| 1              |
++----------------+
