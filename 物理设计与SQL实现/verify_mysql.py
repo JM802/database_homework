@@ -44,14 +44,14 @@ def verify(connection, folder, initialize):
     chunks = {}
     if initialize:
         for file in ("01_create.sql", "02_seed.sql"):
-            execute((folder.parent / "sql" / file).read_text(encoding="utf-8"))
+            execute((folder.parent / "CourseSelectionSystem" / "sql" / file).read_text(encoding="utf-8"))
             chunks[file] = "exit status: 0\n"
             print(file + " OK", flush=True)
     header = execute("SELECT VERSION() AS mysql_version, DATABASE() AS db, @@sql_mode AS sql_mode;",
                      "--database=" + DATABASE, "--table")
     chunks["MySQL server"] = header
 
-    raw_queries = (folder.parent / "sql" / "03_queries.sql").read_text(encoding="utf-8")
+    raw_queries = (folder.parent / "CourseSelectionSystem" / "sql" / "03_queries.sql").read_text(encoding="utf-8")
     query_blocks = re.split(r"(?m)(?=^-- Q[0-9]{2} )", raw_queries)
     csv_results = {}
     for block in query_blocks[1:]:
@@ -72,7 +72,7 @@ def verify(connection, folder, initialize):
     assert len(csv_results["Q08"]) == 10 and first[4:8] == ["15", "2", "3", "13"]
     assert first[8:] == ["72.33", "2.25", "10", "3"], first
 
-    audit = (folder.parent / "sql" / "04_audit.sql").read_text(encoding="utf-8")
+    audit = (folder.parent / "CourseSelectionSystem" / "sql" / "04_audit.sql").read_text(encoding="utf-8")
     outputs = execute(audit, "--batch", "--raw").splitlines()
     split = outputs.index("audit_rule\tviolations")
     counts = {name: int(count) for name, count in [row.split("\t") for row in outputs[1:split]]}
