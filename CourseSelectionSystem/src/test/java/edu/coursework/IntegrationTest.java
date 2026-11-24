@@ -69,20 +69,29 @@ public class IntegrationTest {
             check(scalar(c,"SELECT last_serial FROM class_number_counter")==1,"创建失败应回滚流水号");
             Instant normal=LocalDateTime.of(2026,3,2,10,0).atZone(Rules.BEIJING).toInstant();
             QueryService visibility=new QueryService(c);
+            check(capture(()->visibility.roster("A","",first)).contains("暂无有效选课学生"),"存在空班提示名单为空");
+            try{visibility.roster("A","","不存在的班");throw new AssertionError("不存在的班必须提示");}catch(IllegalArgumentException expected){check(expected.getMessage().contains("不存在"),"不存在班号的名单提示");}
+            try{visibility.statistics("A","","不存在的班");throw new AssertionError("不存在的班不能显示全零统计");}catch(IllegalArgumentException expected){check(expected.getMessage().contains("不存在"),"不存在班号的统计提示");}
+            check(capture(()->visibility.classes("A","","不存在的教师",false,normal)).contains("无匹配教学班"),"教师姓名无匹配提示");
             String visible=capture(()->visibility.classes("S","S_TEST","测试教师",false,normal));
             check(visible.contains(first)&&visible.contains("容量 1")&&visible.contains("1区1教101"),"学生窗口内显示班级、教师排课和容量");
             Instant after=LocalDateTime.of(2026,4,1,10,0).atZone(Rules.BEIJING).toInstant();
+            check(capture(()->visibility.classes("S","S_TEST","",true,normal)).contains(first),"窗口内有余量筛选");
+            check(capture(()->visibility.classes("S","S_TEST","",true,after)).contains("不能使用余量筛选"),"窗口外余量筛选提示");
             String hidden=capture(()->visibility.classes("S","S_TEST","",false,after));
             check(hidden.contains(first)&&!hidden.contains("容量")&&!hidden.contains("余量"),"学生窗口外隐藏名额");
             check(capture(()->visibility.classes("T","T_TEST","",false,after)).contains("容量 1"),"任课教师始终看到容量");
             check(!capture(()->visibility.classes("T","T_OTHER","",false,normal)).contains(first),"非任课教师不能查看他人班级");
             EnrollmentService enrollment=new EnrollmentService(c);enrollment.select("S_TEST",first,normal);
             check(scalar(c,"SELECT active_count FROM teaching_class WHERE class_no='"+first+"'")==1,"选课人数");
+            check(capture(()->visibility.classes("S","S_TEST","",true,normal)).contains("没有符合条件的有余量教学班"),"窗口内满员筛选提示");
+            check(capture(()->Main.myRecords(c,"S_TEST")).contains("暂无绩点"),"未录成绩不显示零绩点");
             try{enrollment.select("S_TEST",first,normal);throw new AssertionError("应拒绝重复选课");}catch(IllegalArgumentException expected){}
             check(scalar(c,"SELECT COUNT(*) FROM enrollment")==1,"重复选课不得留下记录");
             long id;try(Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT enrollment_id FROM enrollment")){r.next();id=r.getLong(1);}
             GradeService grade=new GradeService(c);grade.record("T_TEST",id,60,normal);grade.record("T_TEST",id,90,normal.plusSeconds(3600));
             try {grade.record("T_TEST",id,70,normal.plusSeconds(169*3600));throw new AssertionError("应拒绝超期修改");}catch(IllegalArgumentException expected){}
+            check(capture(()->Main.myRecords(c,"S_TEST")).contains("绩点: 4.0"),"已录成绩显示对应绩点");
             check(scalar(c,"SELECT score FROM grade")==90,"成绩修改");check(scalar(c,"SELECT COUNT(*) FROM grade_revision")==1,"成绩历史");
             QueryService queries=new QueryService(c);
             String roster=capture(()->queries.roster("T","T_TEST",first));
@@ -110,6 +119,7 @@ public class IntegrationTest {
             check(scalar(c,"SELECT COUNT(*) FROM enrollment WHERE withdrawn_at IS NOT NULL")==1,"退课保留历史");
             String withdrawnRecords=capture(()->Main.myRecords(c,"S_TEST"));
             check(withdrawnRecords.contains("已退课")&&!withdrawnRecords.contains("成绩:"),"退课历史不显示成绩");
+            check(withdrawnRecords.contains("常规退课")&&withdrawnRecords.contains("2026-03-02T10:01"),"常规退课类型和北京时间");
             String withdrawnTimetable=capture(()->Main.myTimetable(c,"S_TEST"));
             check(!withdrawnTimetable.contains("C_OTHER")&&!withdrawnTimetable.contains("1区1教102"),"退课班级不出现在学生课表");
             String withdrawnCatalog=capture(()->new QueryService(c).classes("S","S_TEST","",false,normal));
@@ -138,6 +148,8 @@ public class IntegrationTest {
             check(teacherList.contains("课程号 C_OTHER"),"教师教学班列表展示课程号");
             Instant mid=LocalDateTime.of(2026,5,3,10,0).atZone(Rules.BEIJING).toInstant();
             enrollment.withdraw("S_TEST",second,mid);
+            String afterMid=capture(()->Main.myRecords(c,"S_TEST"));
+            check(afterMid.contains("期中退课")&&afterMid.contains("2026-05-03T10:00"),"期中退课类型和北京时间");
             try{enrollment.withdraw("S_TEST",third,mid.plusSeconds(60));throw new AssertionError("每学期期中退课只能一次");}catch(IllegalArgumentException expected){}
             try{enrollment.select("S_TEST",second,mid);throw new AssertionError("期中不得选课");}catch(IllegalArgumentException expected){}
             check(scalar(c,"SELECT COUNT(*) FROM enrollment WHERE withdrawn_at IS NULL")==1,"期中退课次数限制后数据一致");
@@ -161,6 +173,7 @@ public class IntegrationTest {
             try{enrollment.select("S_TWO",conflicting,normal.plusSeconds(300));throw new AssertionError("学生上课时间冲突应拒绝");}catch(IllegalArgumentException expected){check(expected.getMessage().contains("冲突"),"学生选课时间冲突拒绝");}
             long zeroId;try(Statement q=c.createStatement();ResultSet row=q.executeQuery("SELECT enrollment_id FROM enrollment WHERE student_no='S_TWO' AND withdrawn_at IS NULL")){row.next();zeroId=row.getLong(1);}
             grade.record("T_TEST",zeroId,0,normal.plusSeconds(300));
+            check(capture(()->Main.myRecords(c,"S_TWO")).contains("成绩: 0 | 绩点: 0.0"),"零分显示零绩点");
             String zeroStats=capture(()->queries.statistics("A","",third));
             check(zeroStats.contains("平均分 0")&&zeroStats.contains("平均绩点 0"),"零分参与统计且未录成绩不计入平均");
             try{grade.record("T_TEST",zeroId,101,normal.plusSeconds(300));throw new AssertionError("越界分数应拒绝");}catch(IllegalArgumentException expected){check(true,"越界分数拒绝");}

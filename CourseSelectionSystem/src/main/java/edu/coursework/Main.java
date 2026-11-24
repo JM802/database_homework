@@ -31,8 +31,32 @@ public final class Main {
         try(PreparedStatement p=db.prepareStatement(sql)){p.setString(1,account);try(ResultSet r=p.executeQuery()){if(!r.next())throw new IllegalArgumentException("账号未绑定人员");return r.getString(1);}}
     }
     static void myRecords(Connection db,String student) throws SQLException {
-        String sql="SELECT e.enrollment_id,c.course_name,t.class_no,e.selected_at,e.withdrawn_at,g.score FROM enrollment e JOIN teaching_class t ON t.class_no=e.class_no JOIN course c ON c.course_no=t.course_no LEFT JOIN grade g ON g.enrollment_id=e.enrollment_id WHERE e.student_no=? ORDER BY e.selected_at";
-        try(PreparedStatement p=db.prepareStatement(sql)){p.setString(1,student);try(ResultSet r=p.executeQuery()){boolean found=false;while(r.next()){found=true;Object score=r.getObject(6);boolean active=r.getObject(5)==null;System.out.printf("选课记录号 %d | %s | %s | %s | %s",r.getLong(1),r.getString(2),r.getString(3),r.getObject(4,java.time.LocalDateTime.class).atOffset(java.time.ZoneOffset.UTC).atZoneSameInstant(Rules.BEIJING).toLocalDateTime(),active?"有效":"已退课");if(active)System.out.print(" | 成绩: "+(score==null?"暂无成绩":score));System.out.println();}if(!found)System.out.println("无选课记录");}}
+        String sql="SELECT e.enrollment_id,c.course_name,t.class_no,e.selected_at,e.withdrawn_at,g.score,t.term_no,term.start_date FROM enrollment e JOIN teaching_class t ON t.class_no=e.class_no JOIN academic_term term ON term.academic_year=t.academic_year AND term.term_no=t.term_no JOIN course c ON c.course_no=t.course_no LEFT JOIN grade g ON g.enrollment_id=e.enrollment_id WHERE e.student_no=? ORDER BY e.selected_at,e.enrollment_id";
+        try(PreparedStatement p=db.prepareStatement(sql)){
+            p.setString(1,student);
+            try(ResultSet r=p.executeQuery()){
+                boolean found=false;
+                while(r.next()){
+                    found=true;
+                    java.time.LocalDateTime selected=r.getObject(4,java.time.LocalDateTime.class).atOffset(java.time.ZoneOffset.UTC).atZoneSameInstant(Rules.BEIJING).toLocalDateTime();
+                    java.time.LocalDateTime withdrawn=r.getObject(5,java.time.LocalDateTime.class);
+                    System.out.printf("选课记录号 %d | %s | %s | 选课时间 %s",r.getLong(1),r.getString(2),r.getString(3),selected);
+                    if(withdrawn==null){
+                        Number score=(Number)r.getObject(6);
+                        if(score==null)System.out.print(" | 有效 | 成绩: 暂无成绩 | 绩点: 暂无绩点");
+                        else System.out.printf(" | 有效 | 成绩: %d | 绩点: %.1f",score.intValue(),(double)Rules.gpa(score.intValue()));
+                    }else{
+                        Instant instant=withdrawn.toInstant(java.time.ZoneOffset.UTC);
+                        java.time.LocalDateTime local=java.time.LocalDateTime.ofInstant(instant,Rules.BEIJING);
+                        java.time.LocalDate start=r.getDate(8).toLocalDate();int term=r.getInt(7);
+                        String kind=Rules.regularWindow(start,term,instant)?"常规退课":Rules.midtermWindow(start,term,instant)?"期中退课":"退课时间异常";
+                        System.out.printf(" | 已退课 | %s | 退课时间 %s",kind,local);
+                    }
+                    System.out.println();
+                }
+                if(!found)System.out.println("无选课记录");
+            }
+        }
     }
     static void myTimetable(Connection db,String student) throws SQLException {
         String sql="SELECT c.academic_year,c.term_no,c.class_no,k.course_name,w.weekday_no,w.start_period,w.end_period,r.room_name,e.enrollment_id FROM enrollment e JOIN teaching_class c ON c.class_no=e.class_no JOIN course k ON k.course_no=c.course_no JOIN class_schedule x ON x.class_no=c.class_no JOIN weekly_time w ON w.time_id=x.time_id JOIN classroom r ON r.room_id=x.room_id WHERE e.student_no=? AND e.withdrawn_at IS NULL ORDER BY c.academic_year,c.term_no,w.weekday_no,w.start_period";

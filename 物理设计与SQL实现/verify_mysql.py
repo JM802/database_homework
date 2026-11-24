@@ -27,7 +27,7 @@ NEGATIVE_CASES = [
 DATABASE = "university_coursework"
 
 
-def verify(connection, folder, initialize):
+def verify(connection, folder, initialize, fixture="baseline", database=DATABASE, write_evidence=True):
     base = ["mysql", *connection, "--default-character-set=utf8mb4"]
     evidence = folder / "运行证据"
 
@@ -44,14 +44,20 @@ def verify(connection, folder, initialize):
     chunks = {}
     if initialize:
         for file in ("01_create.sql", "02_seed.sql"):
-            execute((folder.parent / "CourseSelectionSystem" / "sql" / file).read_text(encoding="utf-8"))
+            script = (folder.parent / "CourseSelectionSystem" / "sql" / file).read_text(encoding="utf-8")
+            if database != DATABASE:
+                script = script.replace("CREATE DATABASE university_coursework ", f"CREATE DATABASE `{database}` ")
+                script = script.replace("USE university_coursework;", f"USE `{database}`;")
+            execute(script)
             chunks[file] = "exit status: 0\n"
             print(file + " OK", flush=True)
     header = execute("SELECT VERSION() AS mysql_version, DATABASE() AS db, @@sql_mode AS sql_mode;",
-                     "--database=" + DATABASE, "--table")
+                     "--database=" + database, "--table")
     chunks["MySQL server"] = header
 
     raw_queries = (folder.parent / "CourseSelectionSystem" / "sql" / "03_queries.sql").read_text(encoding="utf-8")
+    if database != DATABASE:
+        raw_queries = raw_queries.replace("USE university_coursework;", f"USE `{database}`;")
     query_blocks = re.split(r"(?m)(?=^-- Q[0-9]{2} )", raw_queries)
     csv_results = {}
     for block in query_blocks[1:]:
@@ -62,28 +68,35 @@ def verify(connection, folder, initialize):
         chunks[title[3:]] = execute(query_blocks[0] + sql, "--table")
     assert len(csv_results) == 8
     assert [row[1] for row in csv_results["Q01"]] == [f"3区3教10{i}" for i in range(1, 6)]
-    assert len(csv_results["Q02"]) == 10 and csv_results["Q02"][-1][-1] == "17"
+    expected_remaining = "17" if fixture == "baseline" else "16"
+    assert len(csv_results["Q02"]) == 10 and csv_results["Q02"][-1][-1] == expected_remaining, csv_results["Q02"]
     assert len(csv_results["Q03"]) == 2 and len({row[-1] for row in csv_results["Q03"]}) == 2
     assert len(csv_results["Q04"]) == 2 and all(row[-1] == "暂无成绩" for row in csv_results["Q04"])
     assert csv_results["Q05"][0][1:] == ["13", "12", "1"]
     assert {row[0] for row in csv_results["Q06"]} == {"2025-2026-2-001", "2025-2026-3-001"}
-    assert [row[0] for row in csv_results["Q07"]] == ["S014"]
+    expected_students = ["S014"] if fixture == "baseline" else ["S001", "S014"]
+    assert [row[0] for row in csv_results["Q07"]] == expected_students, csv_results["Q07"]
     first = csv_results["Q08"][0]
     assert len(csv_results["Q08"]) == 10 and first[4:8] == ["15", "2", "3", "13"]
     assert first[8:] == ["72.33", "2.25", "10", "3"], first
 
     audit = (folder.parent / "CourseSelectionSystem" / "sql" / "04_audit.sql").read_text(encoding="utf-8")
+    if database != DATABASE:
+        audit = audit.replace("USE university_coursework;", f"USE `{database}`;")
     outputs = execute(audit, "--batch", "--raw").splitlines()
     split = outputs.index("audit_rule\tviolations")
     counts = {name: int(count) for name, count in [row.split("\t") for row in outputs[1:split]]}
     violations = {name: int(count) for name, count in [row.split("\t") for row in outputs[split+1:]]}
-    assert counts == TABLE_ROWS, counts
+    expected_counts = dict(TABLE_ROWS)
+    if fixture == "s001":
+        expected_counts["enrollment"] = 22
+    assert counts == expected_counts, f"样本 {fixture} 行数不符: {counts}"
     assert len(violations) == 18 and all(count == 0 for count in violations.values()), violations
     chunks["04_audit.sql"] = execute(audit, "--table")
 
     chunk = []
     for label, expected_code, statement in NEGATIVE_CASES:
-        result = call(f"START TRANSACTION; {statement}; ROLLBACK;", "--database=" + DATABASE)
+        result = call(f"START TRANSACTION; {statement}; ROLLBACK;", "--database=" + database)
         error = re.search(r"ERROR (\d+)", result.stderr)
         assert result.returncode != 0 and error and int(error.group(1)) == expected_code, (label, result.stderr)
         chunk.append(label + "\n" + result.stderr.strip())
@@ -111,20 +124,29 @@ SELECT
 ROLLBACK;
 SELECT COUNT(*) AS restored_class FROM teaching_class WHERE class_no=@target;
 """
-    lines = execute(delete_preview, "--database=" + DATABASE, "--batch", "--raw").splitlines()
+    lines = execute(delete_preview, "--database=" + database, "--batch", "--raw").splitlines()
     assert lines[1] == "0\t0\t2430\t14\t11" and lines[3] == "1", lines
     assert execute(audit, "--batch", "--raw").splitlines() == outputs
-    chunks["Delete transaction and rollback"] = execute(delete_preview, "--database=" + DATABASE, "--table")
-    evidence.mkdir(exist_ok=True)
-    content = "\n".join(f"=== {title} ===\n{output.rstrip()}\n" for title, output in chunks.items())
-    (evidence / "MySQL实际运行.txt").write_text(content, encoding="utf-8")
+    chunks["Delete transaction and rollback"] = execute(delete_preview, "--database=" + database, "--table")
+    if write_evidence:
+        evidence.mkdir(exist_ok=True)
+        content = "\n".join(f"=== {title} ===\n{output.rstrip()}\n" for title, output in chunks.items())
+        output_file = "MySQL实际运行.txt" if fixture == "baseline" else "MySQL实际运行_S001扩充.txt"
+        (evidence / output_file).write_text(content, encoding="utf-8")
     print("PASS: 8 business queries, 14 table counts, 18 business audit rules, 13 negative tests, and class deletion rollback.", flush=True)
 
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser(description="Run and verify Task 4 with MySQL.")
     args.add_argument("--initialize", action="store_true", help="Create and seed a new coursework database first.")
+    args.add_argument("--fixture", choices=("baseline", "s001"), default="baseline", help="Choose the original seed or the complete S001 expansion.")
+    args.add_argument("--database", default=DATABASE, help="Target database name.")
+    args.add_argument("--no-evidence", action="store_true", help="Do not overwrite historical output files.")
     args.add_argument("connection", nargs=argparse.REMAINDER, help="MySQL connection arguments after --.")
     options = args.parse_args()
     connection = options.connection[1:] if options.connection[:1] == ["--"] else options.connection
-    verify(connection, Path(__file__).resolve().parent, options.initialize)
+    if options.initialize and options.fixture != "baseline":
+        args.error("--initialize 只创建原始样本；扩充样本请先单独准备")
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", options.database):
+        args.error("数据库名称只允许字母、数字和下划线")
+    verify(connection, Path(__file__).resolve().parent, options.initialize, options.fixture, options.database, not options.no_evidence)
